@@ -2,7 +2,11 @@ import React from 'react';
 import { Smartphone, Globe, Briefcase, Wrench } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const LearningTracks = () => {
+interface LearningTracksProps {
+  onGetStarted: () => void;
+}
+
+const LearningTracks: React.FC<LearningTracksProps> = ({ onGetStarted }) => {
   const tracks = [
     {
       icon: Smartphone,
@@ -124,7 +128,10 @@ const LearningTracks = () => {
                 </div>
               </div>
 
-              <button className="w-full bg-white text-gray-900 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors shadow-sm">
+              <button 
+                onClick={onGetStarted}
+                className="w-full bg-white text-gray-900 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors shadow-sm"
+              >
                 Start This Track
               </button>
             </motion.div>

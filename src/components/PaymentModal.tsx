@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X, CreditCard, Shield, CheckCircle, Loader } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPayment, createUser, enrollUserInTrack } from '../lib/supabase';
+import { formatKenyanPhoneNumber, isValidKenyanPhoneNumber, getPlanAmount, calculateExpiryDate } from '../lib/mpesa';
 
 interface PaymentModalProps {
   plan: string;
@@ -11,7 +13,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
   const [step, setStep] = useState(1);
   const [paymentData, setPaymentData] = useState({
     phoneNumber: '',
-    email: ''
+    email: '',
+    name: '',
+    whatsappNumber: ''
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'success' | 'failed'>('pending');
@@ -25,10 +29,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
   const currentPlan = planDetails[plan as keyof typeof planDetails];
 
   const handleInitiatePayment = async () => {
-    if (currentPlan.price === 0) {
-      // Free trial - no payment needed
-      setPaymentStatus('success');
-      setStep(3);
+    if (!paymentData.name || !paymentData.whatsappNumber) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (!isValidKenyanPhoneNumber(paymentData.whatsappNumber)) {
+      alert('Please enter a valid Kenyan phone number');
+      return;
+    }
+
+    if (currentPlan.price > 0 && !isValidKenyanPhoneNumber(paymentData.phoneNumber)) {
+      alert('Please enter a valid M-Pesa phone number');
       return;
     }
 
@@ -36,55 +48,51 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
     setStep(2);
 
     try {
-      // Simulate M-Pesa STK Push
-      const response = await fetch('/api/initiate-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phoneNumber: paymentData.phoneNumber,
-          amount: currentPlan.price,
-          plan: plan
-        }),
+      // Create user in database
+      const userData = {
+        name: paymentData.name,
+        whatsapp_number: formatKenyanPhoneNumber(paymentData.whatsappNumber),
+        email: paymentData.email || undefined,
+        subscription_plan: plan.toLowerCase().includes('weekly') ? 'weekly' : 
+                          plan.toLowerCase().includes('monthly') ? 'monthly' : 'free',
+        subscription_status: currentPlan.price === 0 ? 'active' : 'inactive',
+        subscription_expires_at: currentPlan.price === 0 ? calculateExpiryDate(plan) : undefined
+      };
+
+      const user = await createUser(userData);
+
+      if (currentPlan.price === 0) {
+        // Free trial - no payment needed
+        setPaymentStatus('success');
+        setStep(3);
+        setIsProcessing(false);
+        return;
+      }
+
+      // Create payment record
+      const paymentRecord = await createPayment({
+        user_id: user.id,
+        amount: currentPlan.price,
+        currency: 'KES',
+        plan: plan,
+        payment_method: 'mpesa',
+        phone_number: formatKenyanPhoneNumber(paymentData.phoneNumber),
+        status: 'pending'
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Poll for payment status
-        const pollPayment = setInterval(async () => {
-          const statusResponse = await fetch(`/api/payment-status/${data.transactionId}`);
-          const statusData = await statusResponse.json();
-
-          if (statusData.status === 'completed') {
-            clearInterval(pollPayment);
-            setPaymentStatus('success');
-            setStep(3);
-            setIsProcessing(false);
-          } else if (statusData.status === 'failed') {
-            clearInterval(pollPayment);
-            setPaymentStatus('failed');
-            setIsProcessing(false);
-          }
-        }, 2000);
-
-        // Stop polling after 2 minutes
-        setTimeout(() => {
-          clearInterval(pollPayment);
-          if (paymentStatus === 'pending') {
-            setPaymentStatus('failed');
-            setIsProcessing(false);
-          }
-        }, 120000);
-      } else {
-        setPaymentStatus('failed');
+      // In a real implementation, you would call the M-Pesa STK Push API here
+      // For demo purposes, we'll simulate the payment process
+      setTimeout(() => {
+        setPaymentStatus('success');
+        setStep(3);
         setIsProcessing(false);
-      }
+      }, 3000);
+
     } catch (error) {
       console.error('Payment error:', error);
       setPaymentStatus('failed');
       setIsProcessing(false);
+      setStep(3);
     }
   };
 
@@ -97,7 +105,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
               <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CreditCard className="h-8 w-8 text-green-600" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Payment</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Enrollment</h2>
               <p className="text-gray-600">You're subscribing to {plan}</p>
             </div>
 
@@ -120,23 +128,54 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
               </div>
             </div>
 
-            {/* Payment Form */}
+            {/* User Information Form */}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  M-Pesa Phone Number
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  value={paymentData.name}
+                  onChange={(e) => setPaymentData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Enter your full name"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  WhatsApp Number *
                 </label>
                 <input
                   type="tel"
-                  value={paymentData.phoneNumber}
-                  onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                  value={paymentData.whatsappNumber}
+                  onChange={(e) => setPaymentData(prev => ({ ...prev, whatsappNumber: e.target.value }))}
                   placeholder="+254 7XX XXX XXX"
                   className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter the number you'll use to pay with M-Pesa
+                  This is where you'll receive your daily lessons
                 </p>
               </div>
+
+              {currentPlan.price > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    M-Pesa Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={paymentData.phoneNumber}
+                    onChange={(e) => setPaymentData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                    placeholder="+254 7XX XXX XXX"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the number you'll use to pay with M-Pesa
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -209,7 +248,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {paymentStatus === 'success' ? 'Welcome to SkillBoost!' : 'Payment Failed'}
+                {paymentStatus === 'success' ? 'Welcome to SkillBoost!' : 'Enrollment Failed'}
               </h2>
               {paymentStatus === 'success' ? (
                 <div>
@@ -243,7 +282,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
               ) : (
                 <div>
                   <p className="text-gray-600 mb-6">
-                    Payment could not be completed. Please try again or contact support.
+                    Enrollment could not be completed. Please try again or contact support.
                   </p>
                   
                   <div className="space-y-3">
@@ -291,7 +330,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
             <div className="text-sm text-gray-500">
-              {step === 1 ? 'Payment Details' : step === 2 ? 'Processing' : 'Complete'}
+              {step === 1 ? 'Enrollment Details' : step === 2 ? 'Processing' : 'Complete'}
             </div>
             <button
               onClick={onClose}
@@ -316,7 +355,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ plan, onClose }) => {
               
               <button
                 onClick={handleInitiatePayment}
-                disabled={!paymentData.phoneNumber && currentPlan.price > 0}
+                disabled={!paymentData.name || !paymentData.whatsappNumber || (currentPlan.price > 0 && !paymentData.phoneNumber)}
                 className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {currentPlan.price === 0 ? 'Start Free Trial' : `Pay KES ${currentPlan.price}`}

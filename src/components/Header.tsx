@@ -3,7 +3,11 @@ import { MessageCircle, Menu, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 
-const Header = () => {
+interface HeaderProps {
+  onGetStarted: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onGetStarted }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -28,7 +32,10 @@ const Header = () => {
             <a href="#tracks" className="text-gray-700 hover:text-green-600 transition-colors">Tracks</a>
             <a href="#pricing" className="text-gray-700 hover:text-green-600 transition-colors">Pricing</a>
             <a href="#testimonials" className="text-gray-700 hover:text-green-600 transition-colors">Reviews</a>
-            <button className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors">
+            <button 
+              onClick={onGetStarted}
+              className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+            >
               Start Learning
             </button>
           </nav>
@@ -55,7 +62,10 @@ const Header = () => {
               <a href="#tracks" className="text-gray-700 hover:text-green-600 transition-colors">Tracks</a>
               <a href="#pricing" className="text-gray-700 hover:text-green-600 transition-colors">Pricing</a>
               <a href="#testimonials" className="text-gray-700 hover:text-green-600 transition-colors">Reviews</a>
-              <button className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors w-full">
+              <button 
+                onClick={onGetStarted}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors w-full"
+              >
                 Start Learning
               </button>
             </nav>

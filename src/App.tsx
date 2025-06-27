@@ -27,7 +27,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
-      <Header />
+      <Header onGetStarted={handleGetStarted} />
       <motion.main
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -35,7 +35,7 @@ function App() {
       >
         <Hero onGetStarted={handleGetStarted} />
         <Features />
-        <LearningTracks />
+        <LearningTracks onGetStarted={handleGetStarted} />
         <Pricing onSelectPlan={handleSelectPlan} />
         <Testimonials />
       </motion.main>
